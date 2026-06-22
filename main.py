@@ -1,0 +1,247 @@
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.responses import FileResponse
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sqlalchemy import create_engine, Column, String, Integer, Boolean, DateTime, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from datetime import datetime, timedelta
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+import yfinance as yf
+from openai import OpenAI
+import os
+import json
+import random
+
+# ---------- CONFIG ----------
+SECRET_KEY = "alphaengine-super-secret-key-change-this-in-production"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
+
+# ---------- DATABASE SETUP ----------
+SQLALCHEMY_DATABASE_URL = "sqlite:///./alphaengine.db"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# ---------- PASSWORD HASHING ----------
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+# ---------- OPENAI (Optional - we use Mock mode now) ----------
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# ---------- FASTAPI APP ----------
+app = FastAPI(title="AlphaEngine API", version="2.0")
+
+# ---------- DATABASE MODELS ----------
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    is_pro = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Portfolio(Base):
+    __tablename__ = "portfolios"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    name = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# Create tables
+Base.metadata.create_all(bind=engine)
+
+# ---------- HELPER FUNCTIONS ----------
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def authenticate_user(db: Session, username: str, password: str):
+    user = db.query(User).filter(User.username == username).first()
+    if not user or not verify_password(password, user.hashed_password):
+        return False
+    return user
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+# ==========================================
+# ========== AUTH ENDPOINTS ================
+# ==========================================
+
+@app.post("/signup")
+def signup(username: str, password: str, db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.username == username).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already taken")
+    
+    hashed = get_password_hash(password)
+    new_user = User(username=username, hashed_password=hashed)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return {"message": f"User {username} created successfully!", "username": username}
+
+@app.post("/login")
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    
+    token = create_access_token(data={"sub": user.username})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "username": user.username,
+        "is_pro": user.is_pro
+    }
+
+# ==========================================
+# ========== PORTFOLIO ENDPOINTS ===========
+# ==========================================
+
+@app.post("/portfolio")
+def create_portfolio(name: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    new_portfolio = Portfolio(user_id=current_user.id, name=name)
+    db.add(new_portfolio)
+    db.commit()
+    db.refresh(new_portfolio)
+    return {"message": f"Portfolio '{name}' created!", "id": new_portfolio.id}
+
+@app.get("/portfolios")
+def get_portfolios(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    portfolios = db.query(Portfolio).filter(Portfolio.user_id == current_user.id).all()
+    return [{"id": p.id, "name": p.name, "created_at": p.created_at} for p in portfolios]
+
+# ==========================================
+# ========== UPGRADE TO PRO ================
+# ==========================================
+
+@app.post("/upgrade")
+def upgrade_to_pro(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    current_user.is_pro = True
+    db.commit()
+    return {"message": f"🎉 {current_user.username} is now a PRO user!", "is_pro": True}
+
+# ==========================================
+# ========== AI ANALYSIS (MOCK MODE) =======
+# ==========================================
+
+@app.post("/analyze")
+def analyze_stock(data: dict, current_user: User = Depends(get_current_user)):
+    ticker = data.get("ticker")
+    if not ticker:
+        raise HTTPException(status_code=400, detail="Please provide a ticker like AAPL")
+
+    stock = yf.Ticker(ticker)
+    hist = stock.history(period="1mo")
+    info = stock.info
+
+    if hist.empty:
+        raise HTTPException(status_code=404, detail="No data found for this ticker")
+
+    current_price = hist["Close"].iloc[-1]
+    prev_price = hist["Close"].iloc[0]
+    change_pct = ((current_price - prev_price) / prev_price) * 100
+
+    # ======================================================
+    # MOCK AI MODE: Generates realistic analysis for free
+    # ======================================================
+    try:
+        random.seed(hash(ticker))
+
+        if change_pct > 2:
+            confidence = random.randint(75, 92)
+            bull = f"{ticker} shows strong upward momentum with increasing volume. Earnings estimates are being revised higher."
+            bear = f"Near-term resistance and potential profit-taking could pressure {ticker}."
+        elif change_pct < -2:
+            confidence = random.randint(60, 85)
+            bull = f"{ticker} has solid long-term fundamentals. This dip represents a potential buying opportunity."
+            bear = f"Downward trend and increased selling pressure suggest near-term weakness."
+        else:
+            confidence = random.randint(50, 75)
+            bull = f"{ticker} is trading in a stable range with balanced buying and selling activity."
+            bear = f"Lack of clear directional catalyst in the short term."
+
+        risk_pool = [
+            "Macroeconomic headwinds", 
+            "Sector rotation risk", 
+            "Regulatory scrutiny", 
+            "Supply chain disruptions", 
+            "Valuation concerns", 
+            "Interest rate sensitivity",
+            "Geopolitical tensions",
+            "Currency fluctuation risk"
+        ]
+        selected_risks = random.sample(risk_pool, 3)
+        
+        price_target = round(current_price * random.uniform(0.90, 1.18), 2)
+
+        ai_result = {
+            "bull_case": bull,
+            "bear_case": bear,
+            "confidence_score": confidence,
+            "key_risks": selected_risks,
+            "price_target": price_target
+        }
+        # ======================================================
+
+        ai_result["ticker"] = ticker
+        ai_result["current_price"] = round(current_price, 2)
+        ai_result["change_pct"] = round(change_pct, 2)
+        ai_result["user"] = current_user.username
+        ai_result["is_pro"] = current_user.is_pro
+        
+        return ai_result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+# ==========================================
+# ========== FRONTEND ======================
+# ==========================================
+
+@app.get("/")
+def home():
+    return FileResponse("templates/index.html")
+
+# ==========================================
+# ========== FOR DEPLOYMENT ================
+# ==========================================
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)

@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AlphaEngine - AI Analyst</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: #0a0a0f;
+            color: #e5e7eb;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+
+        /* HEADER */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .logo {
+            font-size: 26px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .user-area {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .user-area input {
+            padding: 8px 14px;
+            background: #18181f;
+            border: 1px solid #2a2a35;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            width: 140px;
+        }
+        .user-area input::placeholder { color: #4a4a5a; }
+        .btn {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 14px;
+        }
+        .btn-primary { background: #60a5fa; color: #0a0a0f; }
+        .btn-primary:hover { background: #93bbfc; }
+        .btn-success { background: #4ade80; color: #0a0a0f; }
+        .btn-success:hover { background: #6ee7a0; }
+        .btn-danger { background: #f87171; color: #0a0a0f; }
+        .btn-danger:hover { background: #fca5a5; }
+        .btn-outline { background: transparent; border: 1px solid #2a2a35; color: #e5e7eb; }
+        .btn-outline:hover { background: #1a1a25; }
+        .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            background: #1e293b;
+            color: #94a3b8;
+        }
+        .status-badge.pro { background: #4ade8033; color: #4ade80; border: 1px solid #4ade8044; }
+
+        /* TABS */
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 25px;
+            background: #13131a;
+            padding: 5px;
+            border-radius: 14px;
+            border: 1px solid #25252f;
+        }
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #6b7280;
+            transition: 0.3s;
+            border: none;
+            background: transparent;
+        }
+        .tab.active { background: #25252f; color: white; }
+        .tab:hover:not(.active) { color: #e5e7eb; }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* SEARCH */
+        .search-box {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+        .search-box input {
+            flex: 1;
+            padding: 14px 20px;
+            background: #18181f;
+            border: 1px solid #2a2a35;
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+            outline: none;
+        }
+        .search-box input:focus { border-color: #60a5fa; }
+        .search-box button {
+            padding: 14px 28px;
+            background: #60a5fa;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            color: #0a0a0f;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .search-box button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* RESULT CARD */
+        .result-card {
+            background: #13131a;
+            border: 1px solid #25252f;
+            border-radius: 20px;
+            padding: 25px;
+            margin-top: 20px;
+            display: none;
+            animation: fadeIn 0.5s ease;
+        }
+        .result-card.visible { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+        .ticker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            border-bottom: 1px solid #25252f;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .ticker-price h1 { font-size: 28px; }
+        .ticker-price span { font-size: 18px; margin-left: 10px; }
+        .change-positive { color: #4ade80; }
+        .change-negative { color: #f87171; }
+
+        .signal-badge {
+            padding: 6px 18px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 16px;
+            text-transform: uppercase;
+        }
+        .signal-buy { background: #4ade8033; color: #4ade80; border: 1px solid #4ade8044; }
+        .signal-sell { background: #f8717133; color: #f87171; border: 1px solid #f8717144; }
+        .signal-hold { background: #fbbf2433; color: #fbbf24; border: 1px solid #fbbf2444; }
+
+        .confidence-section {
+            display: flex;
+            align-items: center;
+            gap: 25px;
+            background: #0e0e14;
+            padding: 15px 20px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+        }
+        .circle {
+            width: 65px;
+            height: 65px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 700;
+            border: 4px solid #4ade80;
+            color: #4ade80;
+            flex-shrink: 0;
+        }
+        .circle.high { border-color: #4ade80; color: #4ade80; }
+        .circle.medium { border-color: #fbbf24; color: #fbbf24; }
+        .circle.low { border-color: #f87171; color: #f87171; }
+
+        .thesis-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .thesis-box {
+            padding: 15px;
+            border-radius: 12px;
+            background: #0e0e14;
+            border-left: 4px solid #4ade80;
+        }
+        .thesis-box.bear { border-left-color: #f87171; }
+        .thesis-box h4 { font-size: 11px; text-transform: uppercase; color: #6b7280; margin-bottom: 5px; }
+        .thesis-box p { font-size: 14px; line-height: 1.5; }
+
+        .risk-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+        .risk-tag {
+            background: #1e1e2a;
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            border: 1px solid #2a2a3a;
+        }
+
+        .price-target {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #25252f;
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            color: #94a3b8;
+        }
+        .price-target strong { color: white; font-size: 18px; }
+
+        /* PORTFOLIO LIST */
+        .portfolio-list {
+            display: grid;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .portfolio-item {
+            background: #0e0e14;
+            padding: 12px 18px;
+            border-radius: 10px;
+            border: 1px solid #25252f;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .spinner {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .spinner.visible { display: block; }
+        .spinner div {
+            width: 30px;
+            height: 30px;
+            border: 3px solid #2a2a35;
+            border-top: 3px solid #60a5fa;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error-msg {
+            color: #f87171;
+            background: #1e1010;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid #3a1a1a;
+            margin: 10px 0;
+            display: none;
+        }
+        .error-msg.visible { display: block; }
+        .success-msg {
+            color: #4ade80;
+            background: #102010;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid #1a3a1a;
+            margin: 10px 0;
+            display: none;
+        }
+        .success-msg.visible { display: block; }
+
+        .flex-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+        @media (max-width: 700px) {
+            .thesis-grid { grid-template-columns: 1fr; }
+            .confidence-section { flex-direction: column; text-align: center; }
+            .user-area input { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <div class="header">
+            <div class="logo">⚡ AlphaEngine</div>
+            <div class="user-area" id="userArea">
+                <input type="text" id="authUsername" placeholder="Username" value="demo">
+                <input type="password" id="authPassword" placeholder="Password" value="demo123">
+                <button class="btn btn-primary" id="loginBtn">Login</button>
+                <button class="btn btn-outline" id="signupBtn">Sign Up</button>
+                <span id="userStatus" class="status-badge">Not logged in</span>
+                <button class="btn btn-danger btn-sm" id="logoutBtn" style="display:none;">Logout</button>
+            </div>
+        </div>
+
+        <!-- TABS -->
+        <div class="tabs">
+            <button class="tab active" data-tab="tabAnalyze">📊 Analyze</button>
+            <button class="tab" data-tab="tabPortfolio">📁 Portfolios</button>
+            <button class="tab" data-tab="tabUpgrade">⭐ Upgrade</button>
+        </div>
+
+        <!-- ========== TAB 1: ANALYZE ========== -->
+        <div class="tab-content active" id="tabAnalyze">
+            <div class="search-box">
+                <input type="text" id="tickerInput" placeholder="Enter ticker (e.g., NVDA, AAPL)" value="NVDA">
+                <button id="analyzeBtn">Analyze</button>
+            </div>
+            <div class="spinner" id="loadingSpinner"><div></div><p>AlphaEngine is reading filings...</p></div>
+            <div class="error-msg" id="errorMsg"></div>
+            
+            <div class="result-card" id="resultCard">
+                <div class="ticker-header">
+                    <div class="ticker-price">
+                        <h1 id="stockTicker">NVDA</h1>
+                        <span id="stockPrice">$---</span>
+                        <span id="stockChange">--</span>
+                    </div>
+                    <div id="signalBadge" class="signal-badge signal-hold">HOLD</div>
+                </div>
+                <div class="confidence-section">
+                    <div id="confidenceCircle" class="circle high">--%</div>
+                    <div><strong>Confidence Score</strong><p style="color:#94a3b8;font-size:14px;">Based on fundamentals & sentiment</p></div>
+                </div>
+                <div class="thesis-grid">
+                    <div class="thesis-box"><h4>🐂 Bull Case</h4><p id="bullCase">Loading...</p></div>
+                    <div class="thesis-box bear"><h4>🐻 Bear Case</h4><p id="bearCase">Loading...</p></div>
+                </div>
+                <div><h4 style="color:#6b7280;font-size:11px;text-transform:uppercase;">⚠️ Key Risks</h4>
+                    <div class="risk-tags" id="riskContainer"><span class="risk-tag">Loading...</span></div>
+                </div>
+                <div class="price-target"><span>🎯 Price Target (6 months)</span><strong id="priceTarget">$---</strong></div>
+            </div>
+        </div>
+
+        <!-- ========== TAB 2: PORTFOLIOS ========== -->
+        <div class="tab-content" id="tabPortfolio">
+            <div class="flex-row" style="margin-bottom:20px;">
+                <input type="text" id="portfolioName" placeholder="Portfolio name (e.g., Tech Stocks)" style="flex:1;padding:12px;background:#18181f;border:1px solid #2a2a35;border-radius:10px;color:white;">
+                <button class="btn btn-success" id="createPortfolioBtn">+ Create</button>
+            </div>
+            <div class="success-msg" id="portfolioSuccess"></div>
+            <div class="error-msg" id="portfolioError"></div>
+            <h3 style="margin-bottom:10px;">Your Portfolios</h3>
+            <div class="portfolio-list" id="portfolioList">
+                <div class="portfolio-item" style="color:#4a4a5a;">Login to load your portfolios...</div>
+            </div>
+        </div>
+
+        <!-- ========== TAB 3: UPGRADE ========== -->
+        <div class="tab-content" id="tabUpgrade">
+            <div style="background:#13131a;border:1px solid #25252f;border-radius:20px;padding:30px;text-align:center;">
+                <h2 style="margin-bottom:10px;">🚀 Upgrade to AlphaEngine PRO</h2>
+                <p style="color:#94a3b8;margin-bottom:20px;">Get unlimited analyses, real-time alerts, and premium features.</p>
+                <button class="btn btn-primary" id="upgradeBtn" style="padding:14px 40px;font-size:18px;">⭐ Upgrade Now</button>
+                <div class="success-msg" id="upgradeSuccess" style="margin-top:15px;"></div>
+                <div class="error-msg" id="upgradeError" style="margin-top:15px;"></div>
+                <p id="proStatus" style="margin-top:15px;color:#4a4a5a;">Current status: Free tier</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===================== GLOBALS =====================
+        let authToken = localStorage.getItem('alpha_token') || null;
+        let currentUser = localStorage.getItem('alpha_user') || null;
+        let isPro = localStorage.getItem('alpha_pro') === 'true';
+
+        const API_BASE = '';
+
+        // ===================== DOM REFS =====================
+        const loginBtn = document.getElementById('loginBtn');
+        const signupBtn = document.getElementById('signupBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const authUsername = document.getElementById('authUsername');
+        const authPassword = document.getElementById('authPassword');
+        const userStatus = document.getElementById('userStatus');
+
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const tickerInput = document.getElementById('tickerInput');
+        const resultCard = document.getElementById('resultCard');
+        const errorMsg = document.getElementById('errorMsg');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+
+        const stockTicker = document.getElementById('stockTicker');
+        const stockPrice = document.getElementById('stockPrice');
+        const stockChange = document.getElementById('stockChange');
+        const signalBadge = document.getElementById('signalBadge');
+        const confidenceCircle = document.getElementById('confidenceCircle');
+        const bullCase = document.getElementById('bullCase');
+        const bearCase = document.getElementById('bearCase');
+        const riskContainer = document.getElementById('riskContainer');
+        const priceTarget = document.getElementById('priceTarget');
+
+        const portfolioName = document.getElementById('portfolioName');
+        const createPortfolioBtn = document.getElementById('createPortfolioBtn');
+        const portfolioList = document.getElementById('portfolioList');
+        const portfolioSuccess = document.getElementById('portfolioSuccess');
+        const portfolioError = document.getElementById('portfolioError');
+
+        const upgradeBtn = document.getElementById('upgradeBtn');
+        const upgradeSuccess = document.getElementById('upgradeSuccess');
+        const upgradeError = document.getElementById('upgradeError');
+        const proStatus = document.getElementById('proStatus');
+
+        // ===================== TABS =====================
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById(this.dataset.tab).classList.add('active');
+                if (this.dataset.tab === 'tabPortfolio') loadPortfolios();
+                if (this.dataset.tab === 'tabUpgrade') updateProStatus();
+            });
+        });
+
+        // ===================== AUTH =====================
+        function updateUI() {
+            if (authToken && currentUser) {
+                userStatus.textContent = `✅ ${currentUser} ${isPro ? '⭐ PRO' : ''}`;
+                userStatus.className = `status-badge ${isPro ? 'pro' : ''}`;
+                loginBtn.style.display = 'none';
+                signupBtn.style.display = 'none';
+                logoutBtn.style.display = 'inline-block';
+                authUsername.disabled = true;
+                authPassword.disabled = true;
+            } else {
+                userStatus.textContent = 'Not logged in';
+                userStatus.className = 'status-badge';
+                loginBtn.style.display = 'inline-block';
+                signupBtn.style.display = 'inline-block';
+                logoutBtn.style.display = 'none';
+                authUsername.disabled = false;
+                authPassword.disabled = false;
+                authToken = null;
+                currentUser = null;
+                isPro = false;
+                localStorage.removeItem('alpha_token');
+                localStorage.removeItem('alpha_user');
+                localStorage.removeItem('alpha_pro');
+            }
+            if (proStatus) updateProStatus();
+        }
+
+        async function doLogin() {
+            const username = authUsername.value.trim();
+            const password = authPassword.value.trim();
+            if (!username || !password) return showError('Enter username and password', 'errorMsg');
+
+            try {
+                const formData = new FormData();
+                formData.append('username', username);
+                formData.append('password', password);
+                const res = await fetch('/login', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (res.ok) {
+                    authToken = data.access_token;
+                    currentUser = data.username;
+                    isPro = data.is_pro || false;
+                    localStorage.setItem('alpha_token', authToken);
+                    localStorage.setItem('alpha_user', currentUser);
+                    localStorage.setItem('alpha_pro', JSON.stringify(isPro));
+                    updateUI();
+                    showSuccess(`Welcome back, ${currentUser}!`, 'errorMsg');
+                } else {
+                    showError(data.detail || 'Login failed', 'errorMsg');
+                }
+            } catch (e) { showError('Network error', 'errorMsg'); }
+        }
+
+        async function doSignup() {
+            const username = authUsername.value.trim();
+            const password = authPassword.value.trim();
+            if (!username || !password) return showError('Enter username and password', 'errorMsg');
+
+            try {
+                const res = await fetch(`/signup?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    showSuccess(`✅ ${data.message}. Now login!`, 'errorMsg');
+                } else {
+                    showError(data.detail || 'Signup failed', 'errorMsg');
+                }
+            } catch (e) { showError('Network error', 'errorMsg'); }
+        }
+
+        function doLogout() {
+            authToken = null; currentUser = null; isPro = false;
+            localStorage.removeItem('alpha_token'); localStorage.removeItem('alpha_user'); localStorage.removeItem('alpha_pro');
+            updateUI();
+            resultCard.classList.remove('visible');
+            showSuccess('Logged out.', 'errorMsg');
+        }
+
+        loginBtn.addEventListener('click', doLogin);
+        signupBtn.addEventListener('click', doSignup);
+        logoutBtn.addEventListener('click', doLogout);
+
+        // ===================== ANALYZE =====================
+        analyzeBtn.addEventListener('click', async () => {
+            if (!authToken) return showError('Please login first!', 'errorMsg');
+
+            const ticker = tickerInput.value.trim().toUpperCase();
+            if (!ticker) return showError('Enter a ticker', 'errorMsg');
+
+            resultCard.classList.remove('visible');
+            errorMsg.classList.remove('visible');
+            loadingSpinner.classList.add('visible');
+            analyzeBtn.disabled = true;
+
+            try {
+                const res = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ ticker })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Analysis failed');
+
+                stockTicker.textContent = data.ticker;
+                stockPrice.textContent = `$${data.current_price.toFixed(2)}`;
+                const ch = data.change_pct;
+                stockChange.textContent = `${ch > 0 ? '+' : ''}${ch.toFixed(2)}%`;
+                stockChange.className = ch >= 0 ? 'change-positive' : 'change-negative';
+
+                let signal = 'HOLD', cls = 'signal-hold';
+                if (data.confidence_score >= 70 && ch > 0) { signal = 'BUY'; cls = 'signal-buy'; }
+                else if (data.confidence_score >= 70 && ch < -2) { signal = 'SELL'; cls = 'signal-sell'; }
+                else if (data.confidence_score >= 65) { signal = 'BUY'; cls = 'signal-buy'; }
+                signalBadge.textContent = signal; signalBadge.className = `signal-badge ${cls}`;
+
+                const score = data.confidence_score || 50;
+                confidenceCircle.textContent = `${score}%`;
+                confidenceCircle.className = 'circle';
+                if (score >= 70) confidenceCircle.classList.add('high');
+                else if (score >= 50) confidenceCircle.classList.add('medium');
+                else confidenceCircle.classList.add('low');
+
+                bullCase.textContent = data.bull_case || 'N/A';
+                bearCase.textContent = data.bear_case || 'N/A';
+                riskContainer.innerHTML = '';
+                if (data.key_risks && data.key_risks.length) {
+                    data.key_risks.forEach(r => {
+                        const t = document.createElement('span'); t.className = 'risk-tag'; t.textContent = r;
+                        riskContainer.appendChild(t);
+                    });
+                } else { riskContainer.innerHTML = '<span class="risk-tag">No specific risks</span>'; }
+                priceTarget.textContent = data.price_target ? `$${data.price_target.toFixed(2)}` : 'N/A';
+
+                resultCard.classList.add('visible');
+            } catch (err) { showError(err.message, 'errorMsg'); }
+            finally { loadingSpinner.classList.remove('visible'); analyzeBtn.disabled = false; }
+        });
+
+        // ===================== PORTFOLIO =====================
+        async function loadPortfolios() {
+            if (!authToken) { portfolioList.innerHTML = '<div class="portfolio-item" style="color:#4a4a5a;">Please login to see portfolios.</div>'; return; }
+            try {
+                const res = await fetch('/portfolios', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!res.ok) throw new Error('Load failed');
+                if (data.length === 0) {
+                    portfolioList.innerHTML = '<div class="portfolio-item" style="color:#4a4a5a;">No portfolios yet. Create one!</div>';
+                    return;
+                }
+                portfolioList.innerHTML = data.map(p => `
+                    <div class="portfolio-item">
+                        <span>📁 ${p.name}</span>
+                        <span style="color:#4a4a5a;font-size:12px;">Created: ${new Date(p.created_at).toLocaleDateString()}</span>
+                    </div>
+                `).join('');
+            } catch (e) { portfolioList.innerHTML = `<div class="portfolio-item" style="color:#f87171;">Error loading.</div>`; }
+        }
+
+        createPortfolioBtn.addEventListener('click', async () => {
+            if (!authToken) return showError('Login first!', 'portfolioError');
+            const name = portfolioName.value.trim();
+            if (!name) return showError('Enter a portfolio name', 'portfolioError');
+            try {
+                const res = await fetch(`/portfolio?name=${encodeURIComponent(name)}`, { method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Error');
+                showSuccess(`✅ ${data.message}`, 'portfolioSuccess');
+                portfolioName.value = '';
+                loadPortfolios();
+            } catch (e) { showError(e.message, 'portfolioError'); }
+        });
+
+        // ===================== UPGRADE =====================
+        function updateProStatus() {
+            if (isPro) { proStatus.textContent = '⭐ Current status: PRO USER (Unlimited access)'; }
+            else { proStatus.textContent = 'Current status: Free tier (Upgrade for unlimited access)'; }
+        }
+
+        upgradeBtn.addEventListener('click', async () => {
+            if (!authToken) return showError('Login first!', 'upgradeError');
+            try {
+                const res = await fetch('/upgrade', { method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Upgrade failed');
+                isPro = true;
+                localStorage.setItem('alpha_pro', 'true');
+                showSuccess(`✅ ${data.message}`, 'upgradeSuccess');
+                updateUI();
+                updateProStatus();
+            } catch (e) { showError(e.message, 'upgradeError'); }
+        });
+
+        // ===================== HELPERS =====================
+        function showError(msg, id = 'errorMsg') {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = `❌ ${msg}`;
+            el.classList.add('visible');
+            const successEl = document.getElementById(id === 'errorMsg' ? 'portfolioSuccess' : 'upgradeSuccess');
+            if (successEl) successEl.classList.remove('visible');
+        }
+        function showSuccess(msg, id = 'errorMsg') {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = `✅ ${msg}`;
+            el.classList.add('visible');
+            el.style.color = '#4ade80';
+            el.style.background = '#102010';
+            el.style.border = '1px solid #1a3a1a';
+            setTimeout(() => { el.classList.remove('visible'); }, 4000);
+        }
+
+        // Override showError to handle colors
+        const origShowError = showError;
+        showError = function(msg, id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = `❌ ${msg}`;
+            el.classList.add('visible');
+            el.style.color = '#f87171';
+            el.style.background = '#1e1010';
+            el.style.border = '1px solid #3a1a1a';
+        };
+
+        // ===================== INIT =====================
+        updateUI();
+        if (authToken) {
+            loadPortfolios();
+            updateProStatus();
+            // Auto-analyze on load
+            setTimeout(() => { analyzeBtn.click(); }, 500);
+        } else {
+            // Show demo
+            document.getElementById('portfolioList').innerHTML = '<div class="portfolio-item" style="color:#4a4a5a;">Login to load your portfolios.</div>';
+        }
+
+        // Enter key support
+        authPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') loginBtn.click(); });
+        tickerInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') analyzeBtn.click(); });
+    </script>
+</body>
+</html>
