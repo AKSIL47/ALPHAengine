@@ -12,7 +12,7 @@ from openai import OpenAI
 import os
 import json
 import random
-import requests  # <-- NEW: For SEC API calls
+import requests
 
 # ---------- CONFIG ----------
 SECRET_KEY = "alphaengine-super-secret-key-change-this-in-production"
@@ -118,51 +118,42 @@ def get_sec_data(ticker):
     Returns a dictionary with revenue and net_income (in millions).
     """
     try:
-        # Get CIK from Yahoo Finance
         stock = yf.Ticker(ticker)
         cik = stock.info.get('cik')
         if not cik:
-            return {"error": "CIK not found for this ticker"}
+            return {"error": "CIK not found for this ticker", "success": False}
 
-        # SEC requires a User-Agent header with contact info
         headers = {
             'User-Agent': 'AlphaEngine (your_email@example.com)'
         }
         
-        # SEC API endpoint for company facts
-        cik_str = str(cik).zfill(10)  # CIK must be 10 digits with leading zeros
+        cik_str = str(cik).zfill(10)
         url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik_str}.json"
         
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=10)
         if response.status_code != 200:
-            return {"error": "SEC API request failed"}
+            return {"error": "SEC API request failed", "success": False}
         
         data = response.json()
         facts = data.get('facts', {}).get('us-gaap', {})
         
-        # Helper function to get latest value for a metric
         def get_latest_value(metric_key):
             metric_data = facts.get(metric_key, {})
             if 'units' in metric_data and 'USD' in metric_data['units']:
                 entries = metric_data['units']['USD']
-                # Sort by end date (most recent first)
                 sorted_entries = sorted(entries, key=lambda x: x['end'], reverse=True)
                 if sorted_entries:
                     return sorted_entries[0]['val']
             return None
 
-        # Revenue (Annual or Quarterly)
-        # Common tags: RevenueFromContractWithCustomerExcludingAssessedTax, RevenueFromContractWithCustomer
         revenue = get_latest_value('RevenueFromContractWithCustomerExcludingAssessedTax')
         if not revenue:
             revenue = get_latest_value('RevenueFromContractWithCustomer')
         
-        # Net Income
         net_income = get_latest_value('NetIncomeLoss')
         
-        # If values are huge (>1 million), convert to millions and round
         if revenue:
-            revenue = round(revenue / 1_000_000, 2)  # Convert to millions
+            revenue = round(revenue / 1_000_000, 2)
         if net_income:
             net_income = round(net_income / 1_000_000, 2)
         
@@ -336,12 +327,46 @@ def analyze_stock(data: dict, current_user: User = Depends(get_current_user)):
     prev_price = hist["Close"].iloc[0]
     change_pct = ((current_price - prev_price) / prev_price) * 100
 
-    # ---------- NEW: Fetch SEC Data ----------
-    sec_data = get_sec_data(ticker)
-    
-    # Build a summary string for the AI
+    # ---------- Fetch SEC Data with safe error handling ----------
+    sec_data = {"success": False, "revenue": None, "net_income": None}
+    try:
+        cik = info.get('cik')
+        if cik:
+            headers = {
+                'User-Agent': 'AlphaEngine (your_email@example.com)'
+            }
+            cik_str = str(cik).zfill(10)
+            url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik_str}.json"
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                facts = data.get('facts', {}).get('us-gaap', {})
+                
+                def get_latest_value(metric_key):
+                    metric_data = facts.get(metric_key, {})
+                    if 'units' in metric_data and 'USD' in metric_data['units']:
+                        entries = metric_data['units']['USD']
+                        sorted_entries = sorted(entries, key=lambda x: x['end'], reverse=True)
+                        if sorted_entries:
+                            return sorted_entries[0]['val']
+                    return None
+
+                revenue = get_latest_value('RevenueFromContractWithCustomerExcludingAssessedTax')
+                if not revenue:
+                    revenue = get_latest_value('RevenueFromContractWithCustomer')
+                
+                net_income = get_latest_value('NetIncomeLoss')
+                
+                if revenue or net_income:
+                    sec_data["success"] = True
+                    sec_data["revenue"] = round(revenue / 1_000_000, 2) if revenue else None
+                    sec_data["net_income"] = round(net_income / 1_000_000, 2) if net_income else None
+    except Exception as e:
+        sec_data["success"] = False
+
     sec_summary = ""
-    if sec_data.get("success") and sec_data.get("revenue") is not None:
+    if sec_data["success"] and sec_data["revenue"] is not None:
         sec_summary = f"Latest Revenue: ${sec_data['revenue']}M, Net Income: ${sec_data['net_income']}M"
     else:
         sec_summary = "No recent SEC filing data available."
@@ -350,7 +375,6 @@ def analyze_stock(data: dict, current_user: User = Depends(get_current_user)):
     try:
         random.seed(hash(ticker))
         
-        # Generate Bull/Bear cases based on price and SEC data
         if change_pct > 2:
             confidence = random.randint(75, 92)
             bull = f"{ticker} shows strong upward momentum. Revenue is growing and market sentiment is positive."
