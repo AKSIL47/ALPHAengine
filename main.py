@@ -13,6 +13,7 @@ import os
 import json
 import random
 import requests
+import math
 
 # ---------- CONFIG ----------
 SECRET_KEY = "alphaengine-super-secret-key-change-this-in-production"
@@ -113,15 +114,12 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 # ==========================================
 
 def get_sec_data(ticker):
-    """
-    Fetches latest Revenue and Net Income from SEC EDGAR API.
-    Returns a dictionary with revenue and net_income (in millions).
-    """
+    """Fetches latest Revenue and Net Income from SEC EDGAR API."""
     try:
         stock = yf.Ticker(ticker)
         cik = stock.info.get('cik')
         if not cik:
-            return {"error": "CIK not found for this ticker", "success": False}
+            return {"success": False, "revenue": None, "net_income": None}
 
         headers = {
             'User-Agent': 'AlphaEngine (your_email@example.com)'
@@ -132,7 +130,7 @@ def get_sec_data(ticker):
         
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code != 200:
-            return {"error": "SEC API request failed", "success": False}
+            return {"success": False, "revenue": None, "net_income": None}
         
         data = response.json()
         facts = data.get('facts', {}).get('us-gaap', {})
@@ -143,7 +141,9 @@ def get_sec_data(ticker):
                 entries = metric_data['units']['USD']
                 sorted_entries = sorted(entries, key=lambda x: x['end'], reverse=True)
                 if sorted_entries:
-                    return sorted_entries[0]['val']
+                    val = sorted_entries[0]['val']
+                    if val is not None and not math.isnan(val):
+                        return val
             return None
 
         revenue = get_latest_value('RevenueFromContractWithCustomerExcludingAssessedTax')
@@ -152,19 +152,20 @@ def get_sec_data(ticker):
         
         net_income = get_latest_value('NetIncomeLoss')
         
+        # Convert to millions and round
         if revenue:
-            revenue = round(revenue / 1_000_000, 2)
+            revenue = round(float(revenue) / 1_000_000, 2)
         if net_income:
-            net_income = round(net_income / 1_000_000, 2)
+            net_income = round(float(net_income) / 1_000_000, 2)
         
         return {
+            "success": True,
             "revenue": revenue,
-            "net_income": net_income,
-            "success": True
+            "net_income": net_income
         }
         
     except Exception as e:
-        return {"error": str(e), "success": False}
+        return {"success": False, "revenue": None, "net_income": None}
 
 # ==========================================
 # ========== AUTH ENDPOINTS ================
@@ -328,48 +329,17 @@ def analyze_stock(data: dict, current_user: User = Depends(get_current_user)):
     change_pct = ((current_price - prev_price) / prev_price) * 100
 
     # ---------- Fetch SEC Data with safe error handling ----------
-    sec_data = {"success": False, "revenue": None, "net_income": None}
-    try:
-        cik = info.get('cik')
-        if cik:
-            headers = {
-                'User-Agent': 'AlphaEngine (your_email@example.com)'
-            }
-            cik_str = str(cik).zfill(10)
-            url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik_str}.json"
-            
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                facts = data.get('facts', {}).get('us-gaap', {})
-                
-                def get_latest_value(metric_key):
-                    metric_data = facts.get(metric_key, {})
-                    if 'units' in metric_data and 'USD' in metric_data['units']:
-                        entries = metric_data['units']['USD']
-                        sorted_entries = sorted(entries, key=lambda x: x['end'], reverse=True)
-                        if sorted_entries:
-                            return sorted_entries[0]['val']
-                    return None
-
-                revenue = get_latest_value('RevenueFromContractWithCustomerExcludingAssessedTax')
-                if not revenue:
-                    revenue = get_latest_value('RevenueFromContractWithCustomer')
-                
-                net_income = get_latest_value('NetIncomeLoss')
-                
-                if revenue or net_income:
-                    sec_data["success"] = True
-                    sec_data["revenue"] = round(revenue / 1_000_000, 2) if revenue else None
-                    sec_data["net_income"] = round(net_income / 1_000_000, 2) if net_income else None
-    except Exception as e:
-        sec_data["success"] = False
-
-    sec_summary = ""
-    if sec_data["success"] and sec_data["revenue"] is not None:
-        sec_summary = f"Latest Revenue: ${sec_data['revenue']}M, Net Income: ${sec_data['net_income']}M"
-    else:
-        sec_summary = "No recent SEC filing data available."
+    sec_data = get_sec_data(ticker)
+    
+    # Ensure we have valid values (convert None to null)
+    revenue = sec_data.get("revenue")
+    net_income = sec_data.get("net_income")
+    sec_success = sec_data.get("success", False)
+    
+    # Build summary
+    sec_summary = "No recent SEC filing data available."
+    if sec_success and revenue is not None:
+        sec_summary = f"Latest Revenue: ${revenue}M, Net Income: ${net_income if net_income is not None else 'N/A'}M"
 
     # ---------- Mock AI Reasoning ----------
     try:
@@ -377,11 +347,11 @@ def analyze_stock(data: dict, current_user: User = Depends(get_current_user)):
         
         if change_pct > 2:
             confidence = random.randint(75, 92)
-            bull = f"{ticker} shows strong upward momentum. Revenue is growing and market sentiment is positive."
+            bull = f"{ticker} shows strong upward momentum. Market sentiment is positive."
             bear = f"Near-term resistance and potential profit-taking could pressure {ticker}."
         elif change_pct < -2:
             confidence = random.randint(60, 85)
-            bull = f"{ticker} has solid long-term fundamentals. The dip represents a potential buying opportunity based on SEC filings."
+            bull = f"{ticker} has solid long-term fundamentals. The dip represents a potential buying opportunity."
             bear = f"Downward trend and increased selling pressure suggest near-term weakness."
         else:
             confidence = random.randint(50, 75)
@@ -408,18 +378,17 @@ def analyze_stock(data: dict, current_user: User = Depends(get_current_user)):
             "key_risks": selected_risks,
             "price_target": price_target,
             "sec_data": {
-                "revenue": sec_data.get("revenue"),
-                "net_income": sec_data.get("net_income"),
-                "success": sec_data.get("success", False),
+                "revenue": revenue,
+                "net_income": net_income,
+                "success": sec_success,
                 "summary": sec_summary
-            }
+            },
+            "ticker": ticker,
+            "current_price": round(float(current_price), 2),
+            "change_pct": round(float(change_pct), 2),
+            "user": current_user.username,
+            "is_pro": current_user.is_pro
         }
-        
-        ai_result["ticker"] = ticker
-        ai_result["current_price"] = round(current_price, 2)
-        ai_result["change_pct"] = round(change_pct, 2)
-        ai_result["user"] = current_user.username
-        ai_result["is_pro"] = current_user.is_pro
         
         return ai_result
         
