@@ -193,20 +193,6 @@
         .circle.medium { border-color: #fbbf24; color: #fbbf24; }
         .circle.low { border-color: #f87171; color: #f87171; }
 
-        .sec-container {
-            margin: 15px 0;
-            background: #0e0e14;
-            padding: 15px;
-            border-radius: 16px;
-            border: 1px solid #1a1a25;
-            display: none;
-        }
-        .sec-container h4 { color: #60a5fa; margin-bottom: 10px; }
-        .sec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .sec-item .label { color: #6b7280; font-size: 12px; text-transform: uppercase; }
-        .sec-item .value { font-size: 18px; font-weight: 700; color: #e5e7eb; }
-        .sec-footer { margin-top: 10px; font-size: 11px; color: #4a4a5a; }
-
         .chart-container {
             margin: 15px 0 20px 0;
             background: #0e0e14;
@@ -256,7 +242,6 @@
         }
         .price-target strong { color: white; font-size: 18px; }
 
-        /* Portfolio Styles */
         .holding-form {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr auto;
@@ -351,7 +336,6 @@
             .holding-form { grid-template-columns: 1fr; }
             .holding-item { grid-template-columns: 1fr 1fr; }
             .summary-card { grid-template-columns: 1fr 1fr; }
-            .sec-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -400,23 +384,6 @@
                     <div><strong>Confidence Score</strong><p style="color:#94a3b8;font-size:14px;">Based on fundamentals & sentiment</p></div>
                 </div>
                 
-                <!-- ========== SEC FILINGS SECTION ========== -->
-                <div class="sec-container" id="secContainer">
-                    <h4>📄 SEC Filing Insight (Latest 10-Q / 10-K)</h4>
-                    <div class="sec-grid">
-                        <div class="sec-item">
-                            <div class="label">Revenue (TTM)</div>
-                            <div class="value" id="secRevenue">N/A</div>
-                        </div>
-                        <div class="sec-item">
-                            <div class="label">Net Income (TTM)</div>
-                            <div class="value" id="secNetIncome">N/A</div>
-                        </div>
-                    </div>
-                    <div class="sec-footer">Data sourced directly from SEC EDGAR</div>
-                </div>
-                <!-- ========================================= -->
-
                 <div class="chart-container">
                     <canvas id="priceChart"></canvas>
                 </div>
@@ -516,11 +483,6 @@
         const priceTarget = document.getElementById('priceTarget');
         const ctx = document.getElementById('priceChart').getContext('2d');
 
-        // SEC Elements
-        const secContainer = document.getElementById('secContainer');
-        const secRevenue = document.getElementById('secRevenue');
-        const secNetIncome = document.getElementById('secNetIncome');
-
         const portfolioName = document.getElementById('portfolioName');
         const createPortfolioBtn = document.getElementById('createPortfolioBtn');
         const portfolioList = document.getElementById('portfolioList');
@@ -580,7 +542,6 @@
                 localStorage.removeItem('alpha_user');
                 localStorage.removeItem('alpha_pro');
                 holdingsSection.style.display = 'none';
-                secContainer.style.display = 'none';
             }
             if (proStatus) updateProStatus();
         }
@@ -633,7 +594,6 @@
             updateUI();
             resultCard.classList.remove('visible');
             holdingsSection.style.display = 'none';
-            secContainer.style.display = 'none';
             if (myChart) { myChart.destroy(); myChart = null; }
             showSuccess('Logged out.', 'errorMsg');
         }
@@ -692,7 +652,6 @@
             if (!ticker) return showError('Enter a ticker', 'errorMsg');
 
             resultCard.classList.remove('visible');
-            secContainer.style.display = 'none';
             errorMsg.classList.remove('visible');
             loadingSpinner.classList.add('visible');
             analyzeBtn.disabled = true;
@@ -736,17 +695,6 @@
                     });
                 } else { riskContainer.innerHTML = '<span class="risk-tag">No specific risks</span>'; }
                 priceTarget.textContent = data.price_target ? `$${data.price_target.toFixed(2)}` : 'N/A';
-
-                // ========== DISPLAY SEC DATA ==========
-                if (data.sec_data && data.sec_data.success && data.sec_data.revenue !== null) {
-                    secContainer.style.display = 'block';
-                    secRevenue.textContent = `$${data.sec_data.revenue.toFixed(2)}M`;
-                    secNetIncome.textContent = `$${data.sec_data.net_income.toFixed(2)}M`;
-                } else {
-                    secContainer.style.display = 'block';
-                    secRevenue.textContent = 'Not available';
-                    secNetIncome.textContent = 'Not available';
-                }
 
                 resultCard.classList.add('visible');
                 await loadChart(ticker);
