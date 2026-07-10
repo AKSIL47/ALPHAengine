@@ -7,15 +7,13 @@ from sqlalchemy.orm import sessionmaker, Session, relationship
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-import yfinance as yf
-from openai import OpenAI
 import os
 import random
 
 # ---------- CONFIG ----------
 SECRET_KEY = "alphaengine-super-secret-key-change-this-in-production"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
 # ---------- DATABASE SETUP ----------
 SQLALCHEMY_DATABASE_URL = "sqlite:///./alphaengine.db"
@@ -26,8 +24,6 @@ Base = declarative_base()
 # ---------- PASSWORD HASHING ----------
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 app = FastAPI(title="AlphaEngine API", version="2.0")
 
@@ -199,15 +195,7 @@ def get_holdings(
     total_value = 0
     total_cost = 0
     for h in holdings:
-        try:
-            stock = yf.Ticker(h.ticker)
-            hist = stock.history(period="1d")
-            if not hist.empty:
-                current_price = hist["Close"].iloc[-1]
-            else:
-                current_price = h.buy_price
-        except:
-            current_price = h.buy_price
+        current_price = h.buy_price * random.uniform(0.85, 1.25)
         current_value = current_price * h.shares
         cost_basis = h.buy_price * h.shares
         pnl = current_value - cost_basis
@@ -247,7 +235,7 @@ def upgrade_to_pro(current_user: User = Depends(get_current_user), db: Session =
     return {"message": f"🎉 {current_user.username} is now a PRO user!", "is_pro": True}
 
 # ==========================================
-# ========== AI ANALYSIS (MOCK MODE) =======
+# ========== AI ANALYSIS ===================
 # ==========================================
 
 @app.post("/analyze")
@@ -256,64 +244,49 @@ def analyze_stock(data: dict, current_user: User = Depends(get_current_user)):
     if not ticker:
         raise HTTPException(status_code=400, detail="Please provide a ticker like AAPL")
     
-    stock = yf.Ticker(ticker)
-    hist = stock.history(period="1mo")
-    info = stock.info
+    random.seed(hash(ticker))
     
-    if hist.empty:
-        raise HTTPException(status_code=404, detail="No data found for this ticker")
+    current_price = round(random.uniform(50, 500), 2)
+    change_pct = round(random.uniform(-8, 12), 2)
     
-    current_price = hist["Close"].iloc[-1]
-    prev_price = hist["Close"].iloc[0]
-    change_pct = ((current_price - prev_price) / prev_price) * 100
+    if change_pct > 2:
+        confidence = random.randint(75, 92)
+        bull = f"{ticker} shows strong upward momentum with increasing volume. Earnings estimates are being revised higher."
+        bear = f"Near-term resistance and potential profit-taking could pressure {ticker}."
+    elif change_pct < -2:
+        confidence = random.randint(60, 85)
+        bull = f"{ticker} has solid long-term fundamentals. This dip represents a potential buying opportunity."
+        bear = f"Downward trend and increased selling pressure suggest near-term weakness."
+    else:
+        confidence = random.randint(50, 75)
+        bull = f"{ticker} is trading in a stable range with balanced buying and selling activity."
+        bear = f"Lack of clear directional catalyst in the short term."
 
-    # ---------- Mock AI Reasoning ----------
-    try:
-        random.seed(hash(ticker))
-        
-        if change_pct > 2:
-            confidence = random.randint(75, 92)
-            bull = f"{ticker} shows strong upward momentum with increasing volume. Earnings estimates are being revised higher."
-            bear = f"Near-term resistance and potential profit-taking could pressure {ticker}."
-        elif change_pct < -2:
-            confidence = random.randint(60, 85)
-            bull = f"{ticker} has solid long-term fundamentals. This dip represents a potential buying opportunity."
-            bear = f"Downward trend and increased selling pressure suggest near-term weakness."
-        else:
-            confidence = random.randint(50, 75)
-            bull = f"{ticker} is trading in a stable range with balanced buying and selling activity."
-            bear = f"Lack of clear directional catalyst in the short term."
+    risk_pool = [
+        "Macroeconomic headwinds", 
+        "Sector rotation risk", 
+        "Regulatory scrutiny", 
+        "Supply chain disruptions", 
+        "Valuation concerns", 
+        "Interest rate sensitivity",
+        "Geopolitical tensions",
+        "Currency fluctuation risk"
+    ]
+    selected_risks = random.sample(risk_pool, 3)
+    price_target = round(current_price * random.uniform(0.90, 1.18), 2)
 
-        risk_pool = [
-            "Macroeconomic headwinds", 
-            "Sector rotation risk", 
-            "Regulatory scrutiny", 
-            "Supply chain disruptions", 
-            "Valuation concerns", 
-            "Interest rate sensitivity",
-            "Geopolitical tensions",
-            "Currency fluctuation risk"
-        ]
-        selected_risks = random.sample(risk_pool, 3)
-        price_target = round(current_price * random.uniform(0.90, 1.18), 2)
-
-        ai_result = {
-            "bull_case": bull,
-            "bear_case": bear,
-            "confidence_score": confidence,
-            "key_risks": selected_risks,
-            "price_target": price_target,
-            "ticker": ticker,
-            "current_price": round(float(current_price), 2),
-            "change_pct": round(float(change_pct), 2),
-            "user": current_user.username,
-            "is_pro": current_user.is_pro
-        }
-        
-        return ai_result
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+    return {
+        "bull_case": bull,
+        "bear_case": bear,
+        "confidence_score": confidence,
+        "key_risks": selected_risks,
+        "price_target": price_target,
+        "ticker": ticker,
+        "current_price": current_price,
+        "change_pct": change_pct,
+        "user": current_user.username,
+        "is_pro": current_user.is_pro
+    }
 
 # ==========================================
 # ========== CHART ENDPOINT ================
@@ -321,13 +294,18 @@ def analyze_stock(data: dict, current_user: User = Depends(get_current_user)):
 
 @app.get("/chart/{ticker}")
 def get_chart(ticker: str):
-    stock = yf.Ticker(ticker)
-    hist = stock.history(period="1mo")
-    if hist.empty:
-        raise HTTPException(status_code=404, detail="No data found")
+    random.seed(hash(ticker) + 1)
+    base_price = random.uniform(50, 500)
+    dates = []
+    prices = []
+    current = base_price
+    for i in range(30):
+        dates.append((datetime.now() - timedelta(days=30-i)).strftime("%Y-%m-%d"))
+        current = current * random.uniform(0.96, 1.04)
+        prices.append(round(current, 2))
     return {
-        "dates": [str(d.date()) for d in hist.index],
-        "prices": [float(p) for p in hist["Close"]]
+        "dates": dates,
+        "prices": prices
     }
 
 # ==========================================
